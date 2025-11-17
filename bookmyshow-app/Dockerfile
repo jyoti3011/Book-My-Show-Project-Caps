@@ -4,22 +4,22 @@ FROM node:18
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package.json package-lock.json ./
+# Copy package.json and package-lock.json first
+COPY package*.json ./
 
-# Force install a compatible PostCSS version to fix the issue
+# Force install PostCSS to fix compatibility issues
 RUN npm install postcss@8.4.21 postcss-safe-parser@6.0.0 --legacy-peer-deps
 
-# Install dependencies
-RUN npm install
+# Install all other dependencies
+RUN npm install --legacy-peer-deps
 
-# Copy the entire project
+# Copy the rest of the project files
 COPY . .
 
-# Expose port 3000
+# Expose the application port
 EXPOSE 3000
 
-# Set environment variable to prevent OpenSSL errors
+# Set environment variables
 ENV NODE_OPTIONS=--openssl-legacy-provider
 ENV PORT=3000
 
