@@ -1,0 +1,110 @@
+pipeline {
+    agent any
+
+    tools {
+        jdk 'jdk21'
+        nodejs 'nodejs'
+    }
+
+    environment {
+        DOCKER_IMAGE = 'jyoti1130/bms-app'
+        DOCKER_REPO  = 'jyoti1130/bms-app'
+    }
+
+    stages {
+
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Git Checkout') {
+            steps {
+                git url: 'https://github.com/jyoti3011/Book-My-Show-Project-Caps.git'
+            }
+        }
+
+        stage('Install NPM Dependencies') {
+            steps {
+                sh '''
+                npm install
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh """
+                docker build -t ${DOCKER_IMAGE} .
+                """
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'DOCKER_HUB_PASWD',
+                    usernameVariable: 'USER',
+                    passwordVariable: 'PASS')
+                ]) {
+                    sh '''
+                    docker login -u $USER -p $PASS
+                    '''
+                }
+
+                sh """
+                docker tag ${DOCKER_IMAGE} ${DOCKER_REPO}
+                docker push ${DOCKER_REPO}
+                """
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                script {
+                    def containerExists = sh(
+                        script: """
+                        docker ps -a --format '{{.Names}}' | grep -w ${DOCKER_IMAGE} || true
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (containerExists) {
+                        echo "Removing existing container..."
+                        sh """
+                        docker rm -f ${DOCKER_IMAGE}
+                        """
+                    }
+
+                    echo "Starting new container..."
+                    sh """
+                    docker run -d --name ${DOCKER_IMAGE} -p 3000:3000 ${DOCKER_REPO}
+                    """
+                }
+            }
+        }
+
+        stage('Config & Deployment') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'awslogin',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                ]]) {
+
+                    dir('terraformfiles') {
+
+                        sh """
+                        chmod 600 mykey.pem
+                        terraform init
+                        terraform validate
+                        terraform apply --auto-approve
+                        """
+                    }
+                }
+            }
+        }
+    }
+}
